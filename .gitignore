@@ -1,0 +1,8 @@
+# REWE app client certificate - never commit
+certs/
+
+/korb
+/korb-fake
+dist/
+*.test
+.env
