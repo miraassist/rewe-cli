@@ -75,7 +75,7 @@ Starting, changing and cancelling a modification follow recorded traffic of the 
 
 ## MCP server for voice assistants
 
-`korb mcp` serves the shopping tools over stdio as a [Model Context Protocol](https://modelcontextprotocol.io) server, for assistants that start it as a subprocess. Logging in and selecting the delivery service or market stay CLI commands for an admin: the server only uses what korb's config directory holds.
+`korb mcp` serves the shopping tools over stdio as a [Model Context Protocol](https://modelcontextprotocol.io) server, for assistants that start it as a subprocess. Logging in and selecting the delivery service or market are for an admin: on the command line, or with the setup tools below from an admin page; an assistant should never offer them to its model.
 
 | Tool | Purpose |
 |---|---|
@@ -86,6 +86,7 @@ Starting, changing and cancelling a modification follow recorded traffic of the 
 | `slots`, `checkout_prepare` | slots, then reserve one (or the next one on a preferred weekday, or the next one) and select the saved payment method (orders nothing) |
 | `order` | place the order; requires `total`, the amount told to the user, and refuses when the checkout's total differs |
 | `orders`, `modification_start`, `modification_submit`, `modification_cancel`, `order_cancel` | open orders and changing or cancelling them |
+| `login_start`, `login_complete`, `store_search`, `store_set` | the setup without a terminal, for an assistant's admin page (not for a model): a login in two steps (the redirect address is copied from the browser's console) and choosing the delivery service or a market |
 
 The answers are compact JSON meant to be spoken (titles, prices like `"2,19 €"`, ids only where a later call needs them). `$KORB_MAX_TOTAL_EURO` (or `$KORB_MAX_TOTAL` in cents) is a hard limit per order. `order`, `modification_submit` and `order_cancel` are annotated as destructive: the assistant should ask the user before calling them.
 

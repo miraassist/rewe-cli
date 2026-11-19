@@ -99,6 +99,18 @@ func mcpTools() []mcpTool {
 		{Name: "order_cancel", Destructive: true, Run: (*app).mcpOrderCancel,
 			Description: "Cancel an open order. Needs the user's yes (destructive: a host that confirms such tools asks before it runs).",
 			Props:       map[string]any{"orderId": str("orderId from orders")}, Required: []string{"orderId"}},
+		// The setup, for an admin page, not for a model (mcpsetup.go).
+		{Name: "login_start", Run: (*app).mcpLoginStart,
+			Description: "Setup, for an admin: start a REWE login. Answers authUrl and a hint how to get the redirect address for login_complete."},
+		{Name: "login_complete", Run: (*app).mcpLoginComplete,
+			Description: "Setup, for an admin: finish the login with the de.rewe.app://redirect?… address copied from the browser.",
+			Props:       map[string]any{"url": str("The de.rewe.app://redirect?… address")}, Required: []string{"url"}},
+		{Name: "store_search", ReadOnly: true, Run: (*app).mcpStoreSearch,
+			Description: "Setup, for an admin: the delivery service and the pickup markets for a postcode.",
+			Props:       map[string]any{"zip": str("Postcode, e.g. 12345")}, Required: []string{"zip"}},
+		{Name: "store_set", Run: (*app).mcpStoreSet,
+			Description: "Setup, for an admin: select the delivery service or a pickup market by its id from store_search.",
+			Props:       map[string]any{"id": str("id from store_search"), "zip": str("The postcode searched")}, Required: []string{"id", "zip"}},
 	}
 }
 
@@ -374,18 +386,23 @@ func (ap *app) mcpStatus(json.RawMessage) (any, error) {
 	missing := []string{}
 	defer func() { out["missing"] = missing; out["ready"] = len(missing) == 0 }()
 
+	// Login and service are told apart: an admin sets up both, in any order.
+	_, tokenErr := ap.tokens.AccessToken(ap.ctx)
+	if tokenErr != nil {
+		missing = append(missing, "not logged in at REWE (an admin logs in: korb login, or login_start): "+tokenErr.Error())
+	} else {
+		out["loggedIn"] = true
+	}
 	store, err := config.ReadStore()
 	if err != nil {
-		missing = append(missing, "no delivery service or market selected (an admin runs korb store set)")
+		missing = append(missing, "no delivery service or market selected (an admin selects it: korb store set, or store_set)")
 		return out, nil
 	}
 	service := map[string]any{"type": store.ServiceType, "marketId": store.WwIdent, "zipCode": store.ZipCode}
 	out["service"] = service
-	if _, err := ap.tokens.AccessToken(ap.ctx); err != nil {
-		missing = append(missing, "not logged in at REWE (an admin runs korb login): "+err.Error())
+	if tokenErr != nil {
 		return out, nil
 	}
-	out["loggedIn"] = true
 	if det, err := ap.anonymousAPI().MarketDetails(ap.ctx, store.WwIdent, store.ServiceType); err == nil && det != nil {
 		service["name"] = det.DisplayName
 	}

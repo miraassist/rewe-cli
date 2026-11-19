@@ -96,33 +96,40 @@ func (ap *app) marketsFor(zip string) ([]rewe.PickupMarket, *rewe.ServicePortfol
 }
 
 func (ap *app) storeSet(id, zip string) error {
-	markets, _, err := ap.marketsFor(zip)
+	s, err := ap.chooseStore(id, zip)
 	if err != nil {
 		return err
+	}
+	return ap.print(s)
+}
+
+// chooseStore selects a market or the delivery service for a zip code and
+// stores it.
+func (ap *app) chooseStore(id, zip string) (config.Store, error) {
+	markets, _, err := ap.marketsFor(zip)
+	if err != nil {
+		return config.Store{}, err
 	}
 	for _, m := range markets {
 		if m.WwIdent == id {
 			s := config.Store{WwIdent: id, ZipCode: zip, ServiceType: m.ServiceType}
-			if err := config.WriteStore(s); err != nil {
-				return err
-			}
-			return ap.print(s)
+			return s, config.WriteStore(s)
 		}
 	}
 	// Not offered for this zip code: explain why as precisely as possible.
 	pickup, err := ap.anonymousAPI().MarketDetails(ap.ctx, id, config.ServicePickup)
 	if err != nil {
-		return err
+		return config.Store{}, err
 	}
 	if pickup != nil {
-		return fmt.Errorf("market %s (%s, %s %s) offers pickup, but REWE does not list it for ZIP %s - try 'korb store set %s %s'",
+		return config.Store{}, fmt.Errorf("market %s (%s, %s %s) offers pickup, but REWE does not list it for ZIP %s - try 'korb store set %s %s'",
 			id, pickup.StreetWithHouseNumber, pickup.ZipCode, pickup.City, zip, id, pickup.ZipCode)
 	}
 	ids := make([]string, 0, len(markets))
 	for _, m := range markets {
 		ids = append(ids, fmt.Sprintf("%s (%s %s)", m.WwIdent, m.ServiceType, strings.TrimSpace(m.City)))
 	}
-	return fmt.Errorf("REWE offers neither pickup nor delivery from market %s for ZIP %s (it may be a store without online ordering); available: %s",
+	return config.Store{}, fmt.Errorf("REWE offers neither pickup nor delivery from market %s for ZIP %s (it may be a store without online ordering); available: %s",
 		id, zip, strings.Join(ids, ", "))
 }
 

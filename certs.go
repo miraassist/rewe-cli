@@ -18,7 +18,7 @@ import (
 )
 
 // Version of rewe-cli.
-const Version = "0.8.0"
+const Version = "0.9.0"
 
 // The REWE mobile API requires the mTLS client certificate of the REWE app.
 // rewe-cli does not ship it: on first use korb fetches it from the korb

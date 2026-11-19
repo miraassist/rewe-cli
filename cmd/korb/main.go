@@ -282,7 +282,8 @@ Commands:
 
   korb mcp                         Serve the shopping tools as an MCP server over stdio (for voice
                                    assistants). $KORB_MAX_TOTAL_EURO limits an order in euros.
-                                   Logging in and selecting the store stay CLI commands.
+                                   Its setup tools (login_start, login_complete, store_search,
+                                   store_set) are for an admin page, not for a model.
 
   korb login                       Log in via the browser. On a local Linux desktop korb registers
                                    itself for de.rewe.app:// links and completes automatically.

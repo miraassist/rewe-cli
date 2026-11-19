@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -139,7 +140,8 @@ func TestRW01_ToolsAreListed(t *testing.T) {
 		names = append(names, obj(tool)["name"].(string))
 	}
 	want := []string{"status", "favorites_search", "frequent", "product_search", "basket_fill", "basket", "basket_set", "slots", "checkout_prepare",
-		"order", "orders", "modification_start", "modification_submit", "modification_cancel", "order_cancel"}
+		"order", "orders", "modification_start", "modification_submit", "modification_cancel", "order_cancel",
+		"login_start", "login_complete", "store_search", "store_set"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools: %v", names)
 	}
@@ -148,7 +150,9 @@ func TestRW01_ToolsAreListed(t *testing.T) {
 func TestRW02_StatusNamesWhatIsMissing(t *testing.T) {
 	fake := setupFake(t)
 	c := startMCP(t)
-	if st := obj(c.ok("status", nil)); st["ready"] != false || !strings.Contains(arr(st["missing"])[0].(string), "korb store set") {
+	// Neither: both are named, the login first.
+	if st := obj(c.ok("status", nil)); st["ready"] != false || len(arr(st["missing"])) != 2 ||
+		!strings.Contains(arr(st["missing"])[1].(string), "korb store set") {
 		t.Fatalf("no store: %v", st)
 	}
 	mustKorb(t, "store", "set", fakerewe.DeliveryMarketID, "12345")
@@ -370,4 +374,62 @@ func TestCheckoutPrepareOnAWeekday(t *testing.T) {
 		t.Fatalf("prepare without a weekday: %v", co)
 	}
 	c.fails("checkout_prepare", map[string]any{"weekday": "Blumentag"}, "is not a weekday")
+}
+
+// PG-12 The REWE login without a terminal: login_start gives the address,
+// login_complete takes the redirect address the browser could not open.
+func TestPG12_TheLoginWithoutATerminal(t *testing.T) {
+	setupFake(t)
+	c := startMCP(t)
+	if st := obj(c.ok("status", nil)); st["loggedIn"] != false {
+		t.Fatalf("status before: %v", st)
+	}
+	r := obj(c.ok("login_start", nil))
+	authURL, _ := r["authUrl"].(string)
+	if authURL == "" || !strings.Contains(r["hint"].(string), "de.rewe.app://redirect") {
+		t.Fatalf("login_start: %v", r)
+	}
+	// The browser's part: korb-fake redirects at once to the app address.
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	res, err := noFollow.Get(authURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	redirect := res.Header.Get("Location")
+	if !strings.HasPrefix(redirect, "de.rewe.app://redirect") {
+		t.Fatalf("redirect %q", redirect)
+	}
+	c.fails("login_complete", map[string]any{"url": "de.rewe.app://redirect?code=x&state=wrong"}, "")
+	if r := obj(c.ok("login_complete", map[string]any{"url": redirect})); r["loggedIn"] != true {
+		t.Fatalf("login_complete: %v", r)
+	}
+	if st := obj(c.ok("status", nil)); st["loggedIn"] != true {
+		t.Fatalf("status after: %v", st)
+	}
+}
+
+// PG-13 The delivery service without a terminal.
+func TestPG13_TheDeliveryServiceWithoutATerminal(t *testing.T) {
+	setupFake(t)
+	c := startMCP(t)
+	var delivery map[string]any
+	for _, m := range arr(c.ok("store_search", map[string]any{"zip": "12345"})) {
+		if m := obj(m); m["service"] == "delivery" {
+			delivery = m
+		} else if m["address"] == nil {
+			t.Errorf("a market without its address: %v", m)
+		}
+	}
+	if delivery == nil {
+		t.Fatal("no delivery service")
+	}
+	if r := obj(c.ok("store_set", map[string]any{"id": delivery["id"], "zip": "12345"})); r["service"] != "delivery" {
+		t.Fatalf("store_set: %v", r)
+	}
+	c.fails("store_set", map[string]any{"id": "999", "zip": "12345"}, "neither pickup nor delivery")
+	st := obj(c.ok("status", nil))
+	if !strings.Contains(fmt.Sprint(st), fmt.Sprint(delivery["id"])) && !strings.Contains(fmt.Sprint(st), "DELIVERY") && !strings.Contains(strings.ToLower(fmt.Sprint(st)), "delivery") {
+		t.Fatalf("status does not name the service: %v", st)
+	}
 }
